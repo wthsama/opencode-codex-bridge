@@ -1,0 +1,12 @@
+{
+  "provider": {
+    "codex-local": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "baseURL": "http://127.0.0.1:15722/v1",
+        "apiKey": "PROXY_MANAGED"
+      },
+      "models": {}
+    }
+  }
+}
