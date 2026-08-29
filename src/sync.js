@@ -17,6 +17,11 @@ function buildCodexLocalModels(modelList) {
   for (const m of modelList) {
     models[m.id] = {
       name: m.id,
+      attachment: true,
+      modalities: {
+        input: ["text", "image"],
+        output: ["text"],
+      },
       variants: { ...REASONING_VARIANTS },
     };
   }

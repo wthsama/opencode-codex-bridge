@@ -21,7 +21,8 @@ https://chatgpt.com/backend-api/codex
 - **Fast 1.5x 模式**：控制页一键开关，动态注入 `service_tier: priority`
 - **流式传输**：完整 SSE 支持，逐 token 实时返回
 - **自动重试**：TLS 瞬时断开自动重连，最多 5 次，间隔递增
-- **控制页面**：`http://127.0.0.1:15722/` 查看状态、切换 Fast 模式、手动重新同步模型
+- **控制页面**：`http://127.0.0.1:15722/` 查看状态、手动刷新官方额度、切换 Fast 模式、手动同步模型
+- **按需同步**：服务启动不会自动请求或写入模型配置，只有点击控制页的“点击同步模型”才会同步
 - **安全**：仅监听 `127.0.0.1`，不对外暴露
 
 ## 快速开始
@@ -57,7 +58,7 @@ node src/index.js
 # 方式二：双击 start.bat（Windows）
 ```
 
-启动后浏览器自动打开控制页面 `http://127.0.0.1:15722/`。等待模型同步状态变为**就绪**。
+启动后浏览器自动打开控制页面 `http://127.0.0.1:15722/`。打开页面后点击“点击同步模型”，等待状态变为**就绪**。
 
 ### 3. 配置 OpenCode
 
@@ -101,7 +102,8 @@ $env:HTTPS_PROXY="http://127.0.0.1:7890"  # PowerShell
 | `/login` | POST | 启动 OAuth 登录 |
 | `/login/status` | GET | 登录状态 |
 | `/fast` | GET/POST | Fast 模式开关 |
-| `/sync` | POST | 手动同步模型 |
+| `/sync` | POST | 手动同步模型，服务启动不自动触发 |
+| `/quota` | GET/POST | 查看缓存额度 / 手动刷新官方额度 |
 | `/v1/models` | GET | 模型列表 |
 | `/v1/responses` | POST | Responses API 代理 |
 
