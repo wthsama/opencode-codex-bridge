@@ -1,10 +1,7 @@
 const https = require("https");
-const { HttpsProxyAgent } = require("https-proxy-agent");
-const { getFastMode } = require("./settings");
+const { getFastMode, getProxyAgent } = require("./settings");
 
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-const PROXY = process.env.HTTPS_PROXY || process.env.https_proxy || "http://127.0.0.1:7890";
-const sharedAgent = new HttpsProxyAgent(PROXY);
 
 function normalizeBody(body) {
   const b = { ...body };
@@ -72,6 +69,7 @@ async function proxyResponses(req, res, accessToken, accountId) {
 
   return new Promise(async (resolve) => {
     const u = new URL(CODEX_RESPONSES_URL);
+    const agent = getProxyAgent();
     const options = {
       hostname: u.hostname,
       port: u.port || 443,
@@ -86,7 +84,7 @@ async function proxyResponses(req, res, accessToken, accountId) {
         Host: u.hostname,
       },
       timeout: 600000,
-      agent: sharedAgent,
+      agent,
       servername: u.hostname,
     };
 

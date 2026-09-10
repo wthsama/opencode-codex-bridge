@@ -1,17 +1,13 @@
 const https = require("https");
-const { HttpsProxyAgent } = require("https-proxy-agent");
+const { getProxyAgent } = require("./settings");
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const PROXY = process.env.HTTPS_PROXY || process.env.https_proxy || "http://127.0.0.1:7890";
-
-function createAgent() {
-  return new HttpsProxyAgent(PROXY);
-}
 
 function fetch(url, opts) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     let body = "";
+    const agent = getProxyAgent();
     const req = https.request({
       hostname: u.hostname,
       port: u.port || 443,
@@ -19,7 +15,7 @@ function fetch(url, opts) {
       method: opts?.method || "GET",
       headers: { ...(opts?.headers || {}), "Host": u.hostname },
       timeout: 30000,
-      agent: createAgent(),
+      agent,
       servername: u.hostname,
     }, (res) => {
       res.on("data", (chunk) => (body += chunk));

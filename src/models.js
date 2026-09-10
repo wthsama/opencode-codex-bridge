@@ -1,15 +1,14 @@
 const https = require("https");
-const { HttpsProxyAgent } = require("https-proxy-agent");
+const { getProxyAgent } = require("./settings");
 
 const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CLIENT_VERSION = "1.0.0";
-const PROXY = process.env.HTTPS_PROXY || process.env.https_proxy || "http://127.0.0.1:7890";
-const sharedAgent = new HttpsProxyAgent(PROXY);
 
 function httpsGet(url, headers) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
+    const agent = getProxyAgent();
     let body = "";
     const req = https.request({
       hostname: u.hostname,
@@ -18,7 +17,7 @@ function httpsGet(url, headers) {
       method: "GET",
       headers: { ...headers, "Host": u.hostname },
       timeout: 30000,
-      agent: sharedAgent,
+      agent,
       servername: u.hostname,
     }, (res) => {
       res.on("data", (chunk) => (body += chunk));
