@@ -4,7 +4,15 @@ const os = require("os");
 const { fetchModels } = require("./models");
 const { getValidAccessToken } = require("./auth");
 
-const OPENCODE_CONFIG = path.join(os.homedir(), ".config", "opencode", "opencode.json");
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config", "opencode", "opencode.json");
+
+function getOpenCodeConfigPath() {
+  return process.env.OPENCODE_CONFIG_PATH || DEFAULT_CONFIG_PATH;
+}
+
+function getBaseURL() {
+  return process.env.OPENCODE_BASE_URL || `http://${process.env.HOST || "127.0.0.1"}:${process.env.PORT || "15722"}/v1`;
+}
 const REASONING_VARIANTS = {
   low: { reasoningEffort: "low" },
   medium: { reasoningEffort: "medium" },
@@ -29,19 +37,21 @@ function buildCodexLocalModels(modelList) {
 }
 
 function readOpenCodeConfig() {
+  const configPath = getOpenCodeConfigPath();
   try {
-    return JSON.parse(fs.readFileSync(OPENCODE_CONFIG, "utf8"));
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
   } catch {
     return null;
   }
 }
 
 function writeOpenCodeConfig(config) {
-  const backupPath = OPENCODE_CONFIG + ".backup";
-  if (fs.existsSync(OPENCODE_CONFIG)) {
-    fs.copyFileSync(OPENCODE_CONFIG, backupPath);
+  const configPath = getOpenCodeConfigPath();
+  const backupPath = configPath + ".backup";
+  if (fs.existsSync(configPath)) {
+    fs.copyFileSync(configPath, backupPath);
   }
-  fs.writeFileSync(OPENCODE_CONFIG, JSON.stringify(config, null, 2) + "\n", "utf8");
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
 }
 
 async function syncModels() {
@@ -52,14 +62,14 @@ async function syncModels() {
   const newModels = buildCodexLocalModels(remoteModels.data);
 
   let config = readOpenCodeConfig();
-  if (!config) return { status: "no_config", path: OPENCODE_CONFIG };
+  if (!config) return { status: "no_config", path: getOpenCodeConfigPath() };
 
   if (!config.provider) config.provider = {};
   config.provider["codex-local"] = {
     npm: "@ai-sdk/openai",
     options: {
       apiKey: "PROXY_MANAGED",
-      baseURL: "http://127.0.0.1:15722/v1",
+      baseURL: getBaseURL(),
     },
     models: newModels,
   };

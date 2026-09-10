@@ -1,0 +1,19 @@
+services:
+  opencode-codex-bridge:
+    build: .
+    image: opencode-codex-bridge:latest
+    container_name: opencode-codex-bridge
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PORT=${PORT:-15722}
+      - HOST=${HOST:-0.0.0.0}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - https_proxy=${https_proxy:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - http_proxy=${http_proxy:-}
+      - ALL_PROXY=${ALL_PROXY:-}
+      - all_proxy=${all_proxy:-}
+    volumes:
+      - ${BRIDGE_DATA_DIR:-./data}:/app/data
+      - ${OPENCODE_CONFIG_DIR:-~/.config/opencode}:/root/.config/opencode

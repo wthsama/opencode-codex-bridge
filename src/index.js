@@ -18,7 +18,8 @@ const {
   getActiveProxyUrl,
 } = require("./settings");
 
-const PORT = 15722;
+const PORT = parseInt(process.env.PORT || "15722", 10);
+const HOST = process.env.HOST || "127.0.0.1";
 const STATUS_LABELS = {
   idle: "未同步",
   starting: "启动中",
@@ -474,7 +475,7 @@ document.getElementById("cancelLoginBtn").addEventListener("click",async()=>{
   return app;
 }
 
-function startServer({ port = PORT, host = "127.0.0.1", syncOnStart = false, sync = doSync, quotaFetcher = fetchQuota, authGetter = getValidAccessToken, logger = console } = {}) {
+function startServer({ port = PORT, host = HOST, syncOnStart = false, sync = doSync, quotaFetcher = fetchQuota, authGetter = getValidAccessToken, logger = console } = {}) {
   const server = createApp({ sync, quotaFetcher, authGetter }).listen(port, host, () => {
     logger.log(`OpenCode Codex 中转站 => http://${host}:${server.address().port}`);
     const auth = readAuth();
