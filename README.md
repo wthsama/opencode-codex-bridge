@@ -97,6 +97,40 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 
 ---
 
+## Docker 部署
+
+项目提供了开箱即用的 `Dockerfile` 和 `docker-compose.yml`，适合部署在 NAS、家庭服务器或 Linux 主机上。
+
+### 1. 使用 Docker Compose（推荐）
+
+```bash
+# 构建并后台启动
+docker compose up -d --build
+```
+
+### 2. 环境变量说明
+
+可通过环境变量或根目录 `.env` 文件覆盖默认配置：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `15722` | 监听端口 |
+| `HOST` | `0.0.0.0` (Docker) / `127.0.0.1` (本地) | 监听地址（容器内默认绑定全接口） |
+| `HTTPS_PROXY` | - | 上游 HTTPS 代理地址（如 `http://192.168.1.x:7890`） |
+| `BRIDGE_DATA_DIR` | `./data` | 数据持久化目录（存放 `auth.json` 与 `settings.json`） |
+| `OPENCODE_CONFIG_DIR` | `~/.config/opencode` | 挂载到容器的 OpenCode 配置目录 |
+| `OPENCODE_CONFIG_PATH` | 容器内默认路径 | 自定义 OpenCode 配置文件路径 |
+| `OPENCODE_BASE_URL` | 自动推导 | 自定义同步写入 OpenCode 配置的 base URL |
+
+### 3. 数据持久化与登录
+
+- 容器会将 `/app/data` 挂载到宿主机（默认 `./data`），OAuth 登录生成的 `auth.json` 与设置项会持久保存。
+- 登录方式与本地一致：
+  - 访问控制网页（默认 `http://<服务器IP>:15722`）点击登录，获取 8 位验证码并完成授权；
+  - 或在容器内运行 CLI 登录：`docker compose exec opencode-codex-bridge node src/cli-login.js`。
+
+---
+
 ## API 端点
 
 | 路径 | 方法 | 说明 |
