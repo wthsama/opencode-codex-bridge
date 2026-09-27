@@ -1,7 +1,10 @@
-const https = require("https");
-const { getFastMode, getProxyAgent } = require("./settings");
+const { Readable } = require("stream");
+const { getFastMode } = require("./settings");
+const { rawFetch } = require("./http");
 
-const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
+const CODEX_RESPONSES_URL = process.env.CODEX_RESPONSES_URL || "https://chatgpt.com/backend-api/codex/responses";
+const MAX_RETRIES = 5;
+const STREAM_TIMEOUT_MS = 600000;
 
 function normalizeBody(body) {
   const b = { ...body };
@@ -18,43 +21,40 @@ function normalizeBody(body) {
   return b;
 }
 
-function getHeader(map, name) {
-  const key = name.toLowerCase();
-  for (const k of Object.keys(map)) {
-    if (k.toLowerCase() === key) return map[k];
-  }
-  return undefined;
+// fetch 的网络错误统一表现为 "fetch failed"，真正原因在 cause 上。
+function errorText(err) {
+  const cause = err && err.cause;
+  return [err && err.message, cause && cause.message, cause && cause.code]
+    .filter(Boolean)
+    .join(" ");
 }
 
-function isRetryableError(msg) {
-  return /socket disconnected before secure TLS/i.test(msg)
-    || /ECONNRESET/i.test(msg)
-    || /socket hang up/i.test(msg)
-    || /ETIMEDOUT/i.test(msg);
+function isRetryableError(text) {
+  return /socket disconnected before secure TLS/i.test(text)
+    || /ECONNRESET/i.test(text)
+    || /socket hang up/i.test(text)
+    || /ETIMEDOUT/i.test(text)
+    || /timeout/i.test(text);
 }
 
-async function doRequest(options, bodyStr) {
-  return new Promise((resolve, reject) => {
-    const upstream = https.request(options, (upRes) => {
-      resolve(upRes);
-    });
-    upstream.on("error", reject);
-    upstream.on("timeout", () => { upstream.destroy(); reject(new Error("Request timeout")); });
-    upstream.write(bodyStr);
-    upstream.end();
-  });
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-async function forwardWithRetry(options, bodyStr, maxRetries = 5) {
+async function requestUpstream(headers, bodyStr) {
   let lastError;
-  for (let i = 0; i <= maxRetries; i++) {
+  for (let i = 0; i <= MAX_RETRIES; i++) {
     try {
-      return await doRequest(options, bodyStr);
+      return await rawFetch(CODEX_RESPONSES_URL, {
+        method: "POST",
+        headers,
+        body: bodyStr,
+        timeout: STREAM_TIMEOUT_MS,
+      });
     } catch (e) {
       lastError = e;
-      if (i < maxRetries && isRetryableError(e.message)) {
-        const delay = Math.min(1000 * Math.pow(2, i), 10000);
-        await new Promise(r => setTimeout(r, delay));
+      if (i < MAX_RETRIES && isRetryableError(errorText(e))) {
+        await sleep(Math.min(1000 * Math.pow(2, i), 10000));
         continue;
       }
       throw e;
@@ -66,67 +66,45 @@ async function forwardWithRetry(options, bodyStr, maxRetries = 5) {
 async function proxyResponses(req, res, accessToken, accountId) {
   const normalizedBody = normalizeBody(req.body);
   const bodyStr = JSON.stringify(normalizedBody);
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "ChatGPT-Account-Id": accountId,
+    originator: "opencode-codex-bridge",
+    "Content-Type": "application/json",
+  };
 
-  return new Promise(async (resolve) => {
-    const u = new URL(CODEX_RESPONSES_URL);
-    const agent = getProxyAgent();
-    const options = {
-      hostname: u.hostname,
-      port: u.port || 443,
-      path: u.pathname + u.search,
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "ChatGPT-Account-Id": accountId,
-        originator: "opencode-codex-bridge",
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(bodyStr),
-        Host: u.hostname,
-      },
-      timeout: 600000,
-      agent,
-      servername: u.hostname,
-    };
+  let upRes;
+  try {
+    upRes = await requestUpstream(headers, bodyStr);
+  } catch (e) {
+    if (!res.headersSent) res.status(502).json({ error: { message: `Upstream error: ${e.message}` } });
+    return;
+  }
 
-    let upRes;
-    try {
-      upRes = await forwardWithRetry(options, bodyStr);
-    } catch (e) {
-      if (!res.headersSent) res.status(502).json({ error: { message: `Upstream error: ${e.message}` } });
-      return resolve();
-    }
+  const status = upRes.status;
+  const contentType = upRes.headers.get("content-type") || "";
 
-    const status = upRes.statusCode;
-    const contentType = getHeader(upRes.headers, "content-type") || "";
+  if (status >= 400) {
+    const text = await upRes.text();
+    res.status(status).set("Content-Type", "application/json");
+    try { res.send(JSON.stringify(JSON.parse(text))); } catch { res.send(text); }
+    return;
+  }
 
-    if (status >= 400) {
-      let buf = "";
-      upRes.on("data", (chunk) => (buf += chunk));
-      upRes.on("end", () => {
-        res.status(status).set("Content-Type", "application/json");
-        try { res.send(JSON.stringify(JSON.parse(buf))); } catch { res.send(buf); }
-        resolve();
-      });
-      return;
-    }
-
-    const isSse = contentType.includes("text/event-stream") || normalizedBody.stream;
-    if (isSse) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-      upRes.pipe(res);
-      upRes.on("end", () => resolve());
-    } else {
-      let buf = "";
-      upRes.on("data", (chunk) => (buf += chunk));
-      upRes.on("end", () => {
-        res.set("Content-Type", "application/json").send(buf);
-        resolve();
-      });
-    }
-  });
+  const isSse = contentType.includes("text/event-stream") || normalizedBody.stream;
+  if (isSse) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const upstreamStream = Readable.fromWeb(upRes.body);
+    upstreamStream.on("error", (err) => { res.destroy(err); });
+    res.on("close", () => upstreamStream.destroy());
+    upstreamStream.pipe(res);
+  } else {
+    const text = await upRes.text();
+    res.set("Content-Type", "application/json").send(text);
+  }
 }
 
 module.exports = { proxyResponses };

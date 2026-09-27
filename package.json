@@ -5,10 +5,14 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "login": "node src/cli-login.js"
+    "login": "node src/cli-login.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "express": "^4.21.0",
-    "https-proxy-agent": "^9.1.0"
+    "undici": "^6.21.0"
   }
 }

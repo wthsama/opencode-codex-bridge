@@ -1,42 +1,16 @@
-const https = require("https");
-const { getProxyAgent } = require("./settings");
+const { request } = require("./http");
 
 const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CLIENT_VERSION = "1.0.0";
 
-function httpsGet(url, headers) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const agent = getProxyAgent();
-    let body = "";
-    const req = https.request({
-      hostname: u.hostname,
-      port: u.port || 443,
-      path: u.pathname + u.search,
-      method: "GET",
-      headers: { ...headers, "Host": u.hostname },
-      timeout: 30000,
-      agent,
-      servername: u.hostname,
-    }, (res) => {
-      res.on("data", (chunk) => (body += chunk));
-      res.on("end", () => {
-        const ok = res.statusCode >= 200 && res.statusCode < 400;
-        resolve({ ok, status: res.statusCode, text: () => body, json: () => JSON.parse(body) });
-      });
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-    req.end();
-  });
-}
-
 async function fetchModels(accessToken, accountId) {
-  const resp = await httpsGet(`${CODEX_MODELS_URL}?client_version=${CLIENT_VERSION}`, {
-    Authorization: `Bearer ${accessToken}`,
-    "ChatGPT-Account-Id": accountId,
-    originator: "opencode-codex-bridge",
+  const resp = await request(`${CODEX_MODELS_URL}?client_version=${CLIENT_VERSION}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "ChatGPT-Account-Id": accountId,
+      originator: "opencode-codex-bridge",
+    },
   });
   if (!resp.ok) {
     throw new Error(`Failed to fetch models: ${resp.status} ${resp.text()}`);
@@ -45,11 +19,13 @@ async function fetchModels(accessToken, accountId) {
 }
 
 async function fetchQuota(accessToken, accountId) {
-  const resp = await httpsGet(CODEX_USAGE_URL, {
-    Authorization: `Bearer ${accessToken}`,
-    "ChatGPT-Account-Id": accountId,
-    Accept: "application/json",
-    originator: "opencode-codex-bridge",
+  const resp = await request(CODEX_USAGE_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "ChatGPT-Account-Id": accountId,
+      Accept: "application/json",
+      originator: "opencode-codex-bridge",
+    },
   });
   if (!resp.ok) {
     throw new Error(`Failed to fetch quota: ${resp.status} ${resp.text()}`);

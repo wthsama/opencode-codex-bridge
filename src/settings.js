@@ -1,10 +1,10 @@
 const fs = require("fs");
 const path = require("path");
-const { HttpsProxyAgent } = require("https-proxy-agent");
+const { ProxyAgent } = require("undici");
 
 const SETTINGS_FILE = path.join(__dirname, "..", "data", "settings.json");
 
-let cachedAgent = undefined;
+let cachedDispatcher = undefined;
 let cachedProxyUrl = undefined;
 
 function readSettings() {
@@ -45,24 +45,26 @@ function setProxyConfig(proxyUrl) {
   const s = readSettings();
   s.proxy = (proxyUrl || "").trim();
   writeSettings(s);
-  cachedAgent = undefined;
+  cachedDispatcher = undefined;
   cachedProxyUrl = undefined;
 }
 
-function getProxyAgent() {
+function getProxyDispatcher() {
   const proxyUrl = getActiveProxyUrl();
   if (!proxyUrl) {
     return undefined; // direct connection
   }
-  if (cachedAgent && cachedProxyUrl === proxyUrl) {
-    return cachedAgent;
+  if (cachedDispatcher && cachedProxyUrl === proxyUrl) {
+    return cachedDispatcher;
   }
   try {
     cachedProxyUrl = proxyUrl;
-    cachedAgent = new HttpsProxyAgent(proxyUrl);
-    return cachedAgent;
+    cachedDispatcher = new ProxyAgent(proxyUrl);
+    return cachedDispatcher;
   } catch (err) {
     console.error(`Invalid proxy URL "${proxyUrl}":`, err.message);
+    cachedDispatcher = undefined;
+    cachedProxyUrl = undefined;
     return undefined;
   }
 }
@@ -92,7 +94,7 @@ module.exports = {
   getCustomProxy,
   setCustomProxy,
   getActiveProxyUrl,
-  getProxyAgent,
+  getProxyDispatcher,
   readSettings,
 };
 

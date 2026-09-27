@@ -1,48 +1,13 @@
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
 const { exec } = require("child_process");
-const { getProxyAgent } = require("./settings");
+const { request } = require("./http");
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const DEVICE_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
 const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const DATA_FILE = path.join(__dirname, "..", "data", "auth.json");
-
-function httpsFetch(url, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const agent = getProxyAgent();
-    let body = "";
-    const req = https.request({
-      hostname: u.hostname,
-      port: u.port || 443,
-      path: u.pathname + u.search,
-      method: opts.method || "GET",
-      headers: { ...(opts.headers || {}), "Host": u.hostname },
-      timeout: 30000,
-      agent,
-      servername: u.hostname,
-    }, (res) => {
-      res.on("data", (chunk) => (body += chunk));
-      res.on("end", () => {
-        const ok = res.statusCode >= 200 && res.statusCode < 400;
-        const status = res.statusCode;
-        resolve({
-          ok,
-          status,
-          text: () => body,
-          json: () => JSON.parse(body),
-        });
-      });
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-    if (opts.body) req.write(opts.body);
-    req.end();
-  });
-}
 
 function ensureDataDir() {
   const dir = path.dirname(DATA_FILE);
@@ -69,7 +34,7 @@ function parseJwtPayload(token) {
 }
 
 async function startDeviceFlow() {
-  const resp = await httpsFetch(DEVICE_CODE_URL, {
+  const resp = await request(DEVICE_CODE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: CLIENT_ID, scope: "openid profile email" }),
@@ -83,7 +48,7 @@ async function startDeviceFlow() {
 async function pollForToken(device) {
   for (let i = 0; i < 60; i++) {
     await sleep(5000);
-    const resp = await httpsFetch(DEVICE_TOKEN_URL, {
+    const resp = await request(DEVICE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,7 +71,7 @@ async function pollForToken(device) {
 }
 
 async function exchangeCodeForTokens(code, codeVerifier) {
-  const resp = await httpsFetch(TOKEN_URL, {
+  const resp = await request(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -124,7 +89,7 @@ async function exchangeCodeForTokens(code, codeVerifier) {
 }
 
 async function refreshAccessToken(refreshToken) {
-  const resp = await httpsFetch(TOKEN_URL, {
+  const resp = await request(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "opencode-codex-bridge" },
     body: new URLSearchParams({
@@ -212,7 +177,7 @@ async function startLoginSession() {
         await sleep(5000);
         if (session.aborted) return;
 
-        const resp = await httpsFetch(DEVICE_TOKEN_URL, {
+        const resp = await request(DEVICE_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
