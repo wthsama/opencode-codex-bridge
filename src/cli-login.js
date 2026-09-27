@@ -1,35 +1,6 @@
-const https = require("https");
-const { getProxyAgent } = require("./settings");
+const { request } = require("./http");
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-function fetch(url, opts) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    let body = "";
-    const agent = getProxyAgent();
-    const req = https.request({
-      hostname: u.hostname,
-      port: u.port || 443,
-      path: u.pathname + u.search,
-      method: opts?.method || "GET",
-      headers: { ...(opts?.headers || {}), "Host": u.hostname },
-      timeout: 30000,
-      agent,
-      servername: u.hostname,
-    }, (res) => {
-      res.on("data", (chunk) => (body += chunk));
-      res.on("end", () => resolve({ ok: res.statusCode < 400, status: res.statusCode, text, json }));
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-    if (opts?.body) req.write(opts.body);
-    req.end();
-
-    function text() { return body; }
-    function json() { return JSON.parse(body); }
-  });
-}
 
 async function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -38,7 +9,7 @@ async function delay(ms) {
 async function login() {
   console.log("Starting Codex OAuth login...\n");
 
-  const deviceResp = await fetch("https://auth.openai.com/api/accounts/deviceauth/usercode", {
+  const deviceResp = await request("https://auth.openai.com/api/accounts/deviceauth/usercode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: CLIENT_ID, scope: "openid profile email" }),
@@ -57,7 +28,7 @@ async function login() {
   for (let i = 0; i < 60; i++) {
     await delay(5000);
     process.stdout.write(".");
-    const pollResp = await fetch("https://auth.openai.com/api/accounts/deviceauth/token", {
+    const pollResp = await request("https://auth.openai.com/api/accounts/deviceauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -85,7 +56,7 @@ async function login() {
   }
   console.log("\nAuthorized!");
 
-  const exchangeResp = await fetch("https://auth.openai.com/oauth/token", {
+  const exchangeResp = await request("https://auth.openai.com/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

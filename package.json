@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "https-proxy-agent": "^9.1.0"
+    "undici": "^6.21.0"
   }
 }
