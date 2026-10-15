@@ -14,6 +14,7 @@ async function main() {
     if (req.url === "/sse") {
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write('data: {"type":"response.output_text.delta","delta":"hello"}\n\n');
+      res.write('data: {"type":"response.completed","response":{"id":"resp_test","object":"response","status":"completed","model":"gpt-5","output":[{"type":"message","id":"msg_test","status":"completed","role":"assistant","content":[{"type":"output_text","text":"hello","annotations":[]}]}]}}\n\n');
       res.write("data: [DONE]\n\n");
       res.end();
       return;
@@ -72,10 +73,17 @@ async function main() {
   assert.strictEqual((await request(`${base}/fast`, { method: "POST" })).json().fast, false);
   assert.ok((await request(`${base}/`)).text().includes("OpenCode Codex Bridge"));
 
-  const sse = await request(`${base}/v1/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-5", input: "hi" }) });
-  assert.strictEqual(sse.status, 200);
-  assert.ok(sse.text().includes("response.output_text.delta"));
-  assert.ok(sse.text().includes("[DONE]"));
+  const streamed = await request(`${base}/v1/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-5", input: "hi", stream: true }) });
+  assert.strictEqual(streamed.status, 200);
+  assert.ok(streamed.text().includes("response.output_text.delta"));
+  assert.ok(streamed.text().includes("[DONE]"));
+
+  const buffered = await request(`${base}/v1/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-5", input: "hi" }) });
+  assert.strictEqual(buffered.status, 200);
+  const bufferedJson = buffered.json();
+  assert.strictEqual(bufferedJson.object, "response");
+  assert.strictEqual(bufferedJson.status, "completed");
+  assert.strictEqual(bufferedJson.output[0].content[0].text, "hello");
 
   appServer.close();
   upstream.close();

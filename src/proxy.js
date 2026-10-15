@@ -63,9 +63,53 @@ async function requestUpstream(headers, bodyStr) {
   throw lastError;
 }
 
+// Codex 上游只回 SSE。非流式客户端（未显式 stream:true）拿到的 SSE 会被
+// OpenAI SDK 当作字符串返回，调用方访问 .choices/.output 即报错。
+// 这里把 SSE 聚合回单条 Responses JSON，保持流式客户端行为不变。
+function collectCompletedResponse(sseText) {
+  let completed = null;
+  const deltas = [];
+  for (const rawLine of sseText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    let event;
+    try { event = JSON.parse(payload); } catch { continue; }
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      deltas.push(event.delta);
+    }
+    if (event.response && (event.type === "response.completed" || event.type === "response.done" || event.type === "response.incomplete")) {
+      completed = event.response;
+    }
+  }
+  if (completed) return completed;
+
+  const fallbackId = `resp_${Date.now().toString(36)}`;
+  return {
+    id: fallbackId,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model: null,
+    output: deltas.length
+      ? [{
+          type: "message",
+          id: `msg_${Date.now().toString(36)}`,
+          status: "completed",
+          role: "assistant",
+          content: [{ type: "output_text", text: deltas.join(""), annotations: [] }],
+        }]
+      : [],
+    usage: null,
+  };
+}
+
 async function proxyResponses(req, res, accessToken, accountId) {
+  const clientStream = !!(req.body && req.body.stream === true);
   const normalizedBody = normalizeBody(req.body);
   const bodyStr = JSON.stringify(normalizedBody);
+  console.log(`[codex-bridge] path=${req.originalUrl || req.url} model=${req.body && req.body.model} client_stream=${JSON.stringify(req.body && req.body.stream)}`);
   const headers = {
     Authorization: `Bearer ${accessToken}`,
     "ChatGPT-Account-Id": accountId,
@@ -92,7 +136,12 @@ async function proxyResponses(req, res, accessToken, accountId) {
   }
 
   const isSse = contentType.includes("text/event-stream") || normalizedBody.stream;
-  if (isSse) {
+  if (isSse && !clientStream) {
+    const text = await upRes.text();
+    const response = collectCompletedResponse(text);
+    console.log(`[codex-bridge] buffered non-stream response (client_stream=false) bytes=${text.length}`);
+    res.set("Content-Type", "application/json").send(JSON.stringify(response));
+  } else if (isSse) {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
